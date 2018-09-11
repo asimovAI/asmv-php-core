@@ -9,7 +9,7 @@ use App\Core\Inner\Cache\Hhvm\CacheAsync;
  * Cache Manager
  * **************
  * It Uses a double-memcached instances -> see CacheAsync
- * in a cooperative multi-tasking environment (hiphop-virtualmachine)
+ * in a cooperative multi-tasking environment /HHVM
  * <CacheAsync>
  *
  * Otherwise you can execute a "single" request (set/get) with:
@@ -36,11 +36,11 @@ abstract class Cache {
    * Re-INITialized on every put/get method, to set file cache key
    * Memcached Objects instead remain in singleton logic
    *
-   * @param type $i
-   * @param type $key
+   * @param integer $i
+   * @param string $key
    * @return boolean
    */
-  static function init($i = 2, $key = null) {
+  static function init(int $i = 2, $key = null): bool {
 
     //cache backup on file
     $CacheName = self::LABEL_FILECACHE . "|";
@@ -81,7 +81,7 @@ abstract class Cache {
 
   /**
    * Reset Connections
-   * @return type
+   * @return bool
    */
   static function reset() {
     usleep(10000); //wait 0.01s
@@ -96,25 +96,25 @@ abstract class Cache {
     return self::init();
   }
 
-  /**
-   * Put/Set
-   * @param type $key
-   * @param type $value
-   * @param type $expiration
-   * @return type
-   */
-  static function put($key, $value, $expiration = self::DEFAULT_EXPIRATION) {
+    /**
+     * @param $key
+     * @param $value
+     * @param int $expiration
+     * @return mixed
+     */
+  static function put($key, $value, int $expiration = self::DEFAULT_EXPIRATION) {
     self::init(2, $key);
     self::$cf->store($key, $value, $expiration);
     return \HH\Asio\join(CacheAsync::put_main($key, $value, $expiration));
   }
 
-  /**
-   * Get Value
-   * @param type $key
-   * @return type
-   */
-  static function get($key, $file_alternative = false) {
+    /**
+     * Get Value
+     * @param string $key
+     * @param bool $flagCacheOnFile
+     * @return
+     */
+  static function get(string $key, $flagCacheOnFile = false) {
 
     self::init(2, $key);
     $g = \HH\Asio\join(CacheAsync::get_main($key));
@@ -126,7 +126,7 @@ abstract class Cache {
 
     //result $g is still empty, try to get from file:
     //if file_alternative param is true
-    if (empty($g) && $file_alternative === true) {
+    if (empty($g) && $flagCacheOnFile === true) {
       self::$cf->eraseExpired();
       $g = self::$cf->retrieve($key);
     }
@@ -134,57 +134,62 @@ abstract class Cache {
     return $g;
   }
 
-  /**
-   * Has?
-   * @param type $key
-   * @return type
-   */
-  static function has($key, $file_alternative = false) {
+    /**
+     * Has?
+     * @param string $key
+     * @param bool $flagCacheOnFile
+     * @return bool
+     */
+  static function has(string $key, $flagCacheOnFile = false) {
     self::init();
-    $r = self::get($key, $file_alternative);
+    $r = self::get($key, $flagCacheOnFile);
     return !empty($r) ? true : false;
   }
 
-  /**
-   * <local-memcached> Set
-   * @ignoring multi-instance cache
-   */
-  static function singleSet($key, $value, $expiration) {
+    /**
+     * <local-memcached> Set
+     * @ignoring multi-instance cache
+     * @param string $key
+     * @param $value
+     * @param integer $expiration
+     * @return mixed
+     */
+  static function singleSet(string $key, $value, int $expiration) {
     self::init(1, $key);
     //self::$cf->store($key, $value, $expiration);
     return self::$_mem_loc->set(Core::$_settings["cache-prefix"] . $key, $value, $expiration);
   }
 
-  /**
-   * <local-memcached> Get
-   * @ignoring multi-instance cache
-   *
-   * It try always to get file cache if memcached failed
-   */
-  static function singleGet($key) {
-    self::init(1, $key);
-    $g = self::$_mem_loc->get(Core::$_settings["cache-prefix"] . $key);
-//    if (empty($g) && self::$_mem_loc->getResultCode() == 47) {
-//      self::reset();
-//      $g = \HH\Asio\join(CacheAsync::get_main($key));
+//  /**
+//   * <local-memcached> Get
+//   * @ignoring multi-instance cache
+//   *
+//   * It try always to get file cache if memcached failed
+//   */
+//  static function singleGet($key) {
+//    self::init(1, $key);
+//    $g = self::$_mem_loc->get(Core::$_settings["cache-prefix"] . $key);
+////    if (empty($g) && self::$_mem_loc->getResultCode() == 47) {
+////      self::reset();
+////      $g = \HH\Asio\join(CacheAsync::get_main($key));
+////    }
+//
+//    //result $g is still empty, try to get from file:
+//    //(i) > in singleGet method framework try to get always file cache
+//    if (empty($g)) {
+//      //self::$cf->eraseExpired();
+//      //$g = self::$cf->retrieve($key);
 //    }
-
-    //result $g is still empty, try to get from file:
-    //(i) > in singleGet method framework try to get always file cache 
-    if (empty($g)) {
-      //self::$cf->eraseExpired();
-      //$g = self::$cf->retrieve($key);
-    }
-
-    return $g;
-  }
+//
+//    return $g;
+//  }
 
   /**
    * Memached Stats
    *
-   * @return type
+   * @return
    */
-  static function stats() {
+  static function stats(): array {
     self::init();
     $r = array();
     $r["Get-FreqTracked:"] = self::$_mem_loc->get('freqtracking');
